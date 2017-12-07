@@ -1,58 +1,134 @@
 <?xml version="1.0" encoding="utf-8"?>
-<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:gravity="center"
+    android:orientation="vertical"
     >
 
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content">
+    <TableLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:textAlignment="center"
+        android:gravity="center">
 
-        <TextView
+        <TableRow
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Category: "
-            android:textStyle="bold"
-            android:textColor="#000000"
-            android:textSize="20dp"/>
+            android:padding="5dp">
 
-        <!--<EditText-->
-            <!--android:id="@+id/category_string"-->
-            <!--android:layout_width="wrap_content"-->
-            <!--android:layout_height="wrap_content"-->
-            <!--android:hint="Add one category"/>-->
+            <TextView
+                android:id="@+id/tv_silence"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_column="1"
+                android:text="Silence"
+                android:textStyle="bold"
+                android:textColor="@color/black"
+                android:textSize="20sp"/>
 
-        <Spinner
-            android:id="@+id/category_spinner"
+            <TextView
+                android:id="@+id/silence_count"
+                android:layout_width="150dp"
+                android:layout_height="wrap_content"
+                android:layout_column="2"
+                android:text="0"
+                android:textAlignment="textEnd"
+                android:paddingLeft="15dp"
+                android:textSize="24sp"/>
+
+        </TableRow>
+
+        <TableRow
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:textSize="20dp">
-        </Spinner>
+            android:padding="5dp">
 
-    </LinearLayout>
+            <TextView
+                android:id="@+id/tv_single_voice"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_column="1"
+                android:text="Single Voice"
+                android:textStyle="bold"
+                android:textColor="@color/black"
+                android:textSize="20sp" />
+
+            <TextView
+                android:id="@+id/single_voice_count"
+                android:layout_width="150dp"
+                android:layout_height="wrap_content"
+                android:layout_column="2"
+                android:text="0"
+                android:textAlignment="textEnd"
+                android:paddingLeft="15dp"
+                android:textSize="24sp"/>
+
+        </TableRow>
+
+        <TableRow
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:padding="5dp">
+
+            <TextView
+                android:id="@+id/tv_crowd_voice"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_column="1"
+                android:text="Crowd Voice"
+                android:textStyle="bold"
+                android:textColor="@color/black"
+                android:textSize="20sp"/>
+
+            <TextView
+                android:id="@+id/crowd_voice_count"
+                android:layout_width="150dp"
+                android:layout_height="wrap_content"
+                android:layout_column="2"
+                android:text="0"
+                android:textAlignment="textEnd"
+                android:paddingLeft="15dp"
+                android:textSize="24sp"/>
+
+        </TableRow>
+
+        <TableRow
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:padding="5dp">
+
+            <TextView
+                android:id="@+id/tv_ambience_noise"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_column="1"
+                android:text="Ambience Noise"
+                android:textStyle="bold"
+                android:textColor="@color/black"
+                android:textSize="20sp"/>
+
+            <TextView
+                android:id="@+id/ambience_noise_count"
+                android:layout_width="150dp"
+                android:layout_height="wrap_content"
+                android:layout_column="2"
+                android:text="0"
+                android:textAlignment="textEnd"
+                android:paddingLeft="15dp"
+                android:textSize="24sp"/>
+
+        </TableRow>
+
+    </TableLayout>
 
     <LinearLayout
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_centerInParent="true"
         android:gravity="center"
         android:orientation="vertical">
-
-        <TextView
-            android:id="@+id/timer_display"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/timer_display_text"
-            android:textSize="20sp"/>
-
-        <Button
-            android:id="@+id/btn_record"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_margin="30dp"
-            android:text="@string/start_record"/>
 
         <Button
             android:id="@+id/btn_play_music"
@@ -76,12 +152,28 @@
 
     </LinearLayout>
 
-    <Button
-        android:id="@+id/tenser_flow_demo"
+    <LinearLayout
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_alignParentBottom="true"
-        android:text="DEMO"/>
+        android:layout_margin="20dp"
+        android:orientation="vertical">
+
+        <Button
+            android:id="@+id/tenser_flow_demo"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:padding="10dp"
+            android:text="Start Detection"/>
+
+        <TextView
+            android:id="@+id/timer_tensor_flow"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:padding="5dp"
+            android:textSize="20sp"/>
+
+    </LinearLayout>
 
 
-</RelativeLayout>
+</LinearLayout>
