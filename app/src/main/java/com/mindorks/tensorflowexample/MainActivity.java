@@ -56,7 +56,7 @@ public class MainActivity extends AppCompatActivity {
 
     // My additional constant
     private static final int MY_PERMISSIONS_REQUEST_RECORD_AUDIO = 100;
-    private static final long DB_WINDOW_MS = 10000;
+    private static final long DB_WINDOW_MS = 5000;
     private static final int NUM_SCENARIOS = 4;
     public static final int DB_THRESHOLD_SILENCE = 45;
     public static final int DB_THRESHOLD_SINGLE_VOICE = 70;
@@ -468,9 +468,9 @@ public class MainActivity extends AppCompatActivity {
                                 countScenarios[3]++;
                                 tvScenarios[3].setText(String.format(Locale.ENGLISH, "%d", countScenarios[3]));
 
-                            } else if (majorityDbRatio > SINGLE_VOICE_DB_RATIO && averageDb < DB_THRESHOLD_SINGLE_VOICE) {
+                            } else if (majorityDbRatio > SINGLE_VOICE_DB_RATIO &&
+                                    averageDb < DB_THRESHOLD_SINGLE_VOICE) {
 
-//                                if(result.foundCommand.equals("_unknown_")){
                                 Log.d(DBG_TAG, "Scenario 2: Single Voice");
                                 countScenarios[1]++;
                                 tvScenarios[1].setText(String.format(Locale.ENGLISH, "%d", countScenarios[1]));

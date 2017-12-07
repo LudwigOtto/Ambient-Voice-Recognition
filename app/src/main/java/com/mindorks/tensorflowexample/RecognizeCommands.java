@@ -30,8 +30,8 @@ import java.util.List;
  */
 public class RecognizeCommands {
 
-    private static final float DETECTION_LOWER_THRESHOLD = 0.25f;
-    public static final int THRESHOlD_COUNTER_SAME_LABEL = 5;
+    private static final float DETECTION_LOWER_THRESHOLD = 0.2f;
+    public static final int THRESHOlD_COUNTER_SAME_LABEL = 0;
 
     // Configuration settings.
     private List<String> labels = new ArrayList<String>();
@@ -194,7 +194,7 @@ public class RecognizeCommands {
         }
 
         // Update counter which is the same label
-        if (previousTopLabel.equals(currentTopLabel)) {
+        if (currentTopScore > DETECTION_LOWER_THRESHOLD) {
             counterSameLabel++;
         } else {
             counterSameLabel = 0;
@@ -210,9 +210,9 @@ public class RecognizeCommands {
             isHumanVoiceDetected = true;
         } else if (currentTopScore > DETECTION_LOWER_THRESHOLD && !currentTopLabel.equals(SILENCE_LABEL)) {
             if (counterSameLabel > THRESHOlD_COUNTER_SAME_LABEL) {
-                isHumanVoiceDetected = false;
-            } else {
                 isHumanVoiceDetected = true;
+            } else {
+                isHumanVoiceDetected = false;
             }
             isNewCommand = false;
             Log.d("DEBUG", "Someone is talking");
