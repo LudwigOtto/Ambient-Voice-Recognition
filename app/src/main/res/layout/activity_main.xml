@@ -19,6 +19,22 @@
             android:layout_height="wrap_content"
             android:padding="5dp">
 
+            <Button
+                android:id="@+id/reset_counter_button"
+                android:layout_width="100dp"
+                android:layout_height="wrap_content"
+                android:layout_column="2"
+                android:text="Reset"
+                android:textColor="@color/black"
+                android:textSize="14sp"/>
+
+        </TableRow>
+
+        <TableRow
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:padding="5dp">
+
             <TextView
                 android:id="@+id/tv_silence"
                 android:layout_width="wrap_content"

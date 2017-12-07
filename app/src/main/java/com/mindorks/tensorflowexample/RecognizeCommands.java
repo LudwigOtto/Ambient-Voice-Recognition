@@ -30,7 +30,7 @@ import java.util.List;
  */
 public class RecognizeCommands {
 
-    private static final float DETECTION_LOWER_THRESHOLD = 0.2f;
+    private static final float DETECTION_LOWER_THRESHOLD = 0.25f;
     public static final int THRESHOlD_COUNTER_SAME_LABEL = 5;
 
     // Configuration settings.

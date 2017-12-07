@@ -58,7 +58,7 @@ public class MainActivity extends AppCompatActivity {
     private static final int MY_PERMISSIONS_REQUEST_RECORD_AUDIO = 100;
     private static final long DB_WINDOW_MS = 10000;
     private static final int NUM_SCENARIOS = 4;
-    public static final int DB_THRESHOLD_SILENCE = 40;
+    public static final int DB_THRESHOLD_SILENCE = 45;
     public static final int DB_THRESHOLD_SINGLE_VOICE = 70;
 
     // Layouts
@@ -228,16 +228,22 @@ public class MainActivity extends AppCompatActivity {
         // Timer
         timerDisplay = (TextView) findViewById(R.id.timer_tensor_flow);
         timerDisplay.setText("00:00");
+
+        // Add reset button
+        findViewById(R.id.reset_counter_button).setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                for (int i = 0; i < NUM_SCENARIOS; i++) {
+                    countScenarios[i] = 0;
+                    tvScenarios[i].setText("0");
+                }
+            }
+        });
     }
 
     private synchronized void stopTensorFlow() {
         stopRecognition();
         stopRecording();
-
-        for (int i = 0; i < NUM_SCENARIOS; i++) {
-            countScenarios[i] = 0;
-            tvScenarios[i].setText("0");
-        }
     }
 
     private synchronized void startTensorFlow() {
@@ -387,11 +393,6 @@ public class MainActivity extends AppCompatActivity {
         }
         shouldContinueRecognition = false;
         recognitionThread = null;
-
-        for (int i = 0; i < NUM_SCENARIOS; i++) {
-            countScenarios[i] = 0;
-            tvScenarios[i].setText("0");
-        }
     }
 
 
