@@ -449,6 +449,8 @@ public class MainActivity extends AppCompatActivity {
                         @Override
                         public void run() {
 
+                            Log.d(DBG_TAG, "result.foundCommand = " + result.foundCommand);
+
                             // Scenario 1: "Silence" = Average db value < 40
                             // Scenario 2: "Single voice" = majority db value > 70%
                             // Scenario 4: "Ambiance Noise" = Average db value > 40 & no human voice detected
@@ -459,7 +461,7 @@ public class MainActivity extends AppCompatActivity {
                                 countScenarios[0]++;
                                 tvScenarios[0].setText(String.format(Locale.ENGLISH, "%d", countScenarios[0]));
 
-                            } else if (!result.isHumanVoiceDetected || result.foundCommand.equals("_unknown_")) {
+                            } else if (!result.isHumanVoiceDetected) {
 
                                 Log.d(DBG_TAG, "Scenario 4: Ambiance Noise");
                                 countScenarios[3]++;
@@ -467,6 +469,7 @@ public class MainActivity extends AppCompatActivity {
 
                             } else if (majorityDbRatio > SINGLE_VOICE_DB_RATIO && averageDb < DB_THRESHOLD_SINGLE_VOICE) {
 
+//                                if(result.foundCommand.equals("_unknown_")){
                                 Log.d(DBG_TAG, "Scenario 2: Single Voice");
                                 countScenarios[1]++;
                                 tvScenarios[1].setText(String.format(Locale.ENGLISH, "%d", countScenarios[1]));

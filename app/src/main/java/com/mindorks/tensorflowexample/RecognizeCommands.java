@@ -31,6 +31,7 @@ import java.util.List;
 public class RecognizeCommands {
 
     private static final float DETECTION_LOWER_THRESHOLD = 0.2f;
+    public static final int THRESHOlD_COUNTER_SAME_LABEL = 5;
 
     // Configuration settings.
     private List<String> labels = new ArrayList<String>();
@@ -49,6 +50,9 @@ public class RecognizeCommands {
 
     private static final String SILENCE_LABEL = "_silence_";
     private static final long MINIMUM_TIME_FRACTION = 4;
+
+    // My working variable
+    private int counterSameLabel = 0;
 
     public RecognizeCommands(
             List<String> inLabels,
@@ -126,7 +130,7 @@ public class RecognizeCommands {
                             + previousResults.getFirst().first);
         }
 
-        Log.d("DEBUG", "currentResults = " + Arrays.toString(currentResults));
+//        Log.d("DEBUG", "currentResults = " + Arrays.toString(currentResults));
 
         final int howManyResults = previousResults.size();
         // Ignore any results that are coming in too frequently.
@@ -188,6 +192,14 @@ public class RecognizeCommands {
         } else {
             timeSinceLastTop = currentTimeMS - previousTopLabelTime;
         }
+
+        // Update counter which is the same label
+        if (previousTopLabel.equals(currentTopLabel)) {
+            counterSameLabel++;
+        } else {
+            counterSameLabel = 0;
+        }
+
         boolean isNewCommand;
         boolean isHumanVoiceDetected;
         if ((currentTopScore > detectionThreshold) && (timeSinceLastTop > suppressionMs)) {
@@ -196,9 +208,13 @@ public class RecognizeCommands {
             previousTopLabelScore = currentTopScore;
             isNewCommand = true;
             isHumanVoiceDetected = true;
-        } else if (currentTopScore > DETECTION_LOWER_THRESHOLD) {
+        } else if (currentTopScore > DETECTION_LOWER_THRESHOLD && !currentTopLabel.equals(SILENCE_LABEL)) {
+            if (counterSameLabel > THRESHOlD_COUNTER_SAME_LABEL) {
+                isHumanVoiceDetected = false;
+            } else {
+                isHumanVoiceDetected = true;
+            }
             isNewCommand = false;
-            isHumanVoiceDetected = true;
             Log.d("DEBUG", "Someone is talking");
         } else {
             isNewCommand = false;
