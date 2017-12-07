@@ -40,6 +40,7 @@ import android.media.MediaRecorder;
 import android.os.Build;
 import android.os.Bundle;
 import android.util.Log;
+import android.util.Pair;
 import android.view.View;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
@@ -50,7 +51,10 @@ import org.tensorflow.contrib.android.TensorFlowInferenceInterface;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Deque;
 import java.util.List;
 import java.util.concurrent.locks.ReentrantLock;
 
@@ -64,16 +68,19 @@ public class SpeechActivity extends Activity {
   // settings. See the audio recognition tutorial for a detailed explanation of
   // all these, but you should customize them to match your training settings if
   // you are running your own model.
-  private static final int SAMPLE_RATE = 48000;
-  private static final int SAMPLE_DURATION_MS = 5000;
+  private static final int SAMPLE_RATE = 16000;
+  private static final int SAMPLE_DURATION_MS = 1000;
   private static final int RECORDING_LENGTH = (int) (SAMPLE_RATE * SAMPLE_DURATION_MS / 1000);
   private static final long AVERAGE_WINDOW_DURATION_MS = 500;
   private static final float DETECTION_THRESHOLD = 0.70f;
   private static final int SUPPRESSION_MS = 1500;
   private static final int MINIMUM_COUNT = 3;
   private static final long MINIMUM_TIME_BETWEEN_SAMPLES_MS = 30;
-  private static final String LABEL_FILENAME = "file:///android_asset/100_conv_labels.txt";
-  private static final String MODEL_FILENAME = "file:///android_asset/100_conv_frozen_graph.pb";
+//  private static final long MINIMUM_TIME_BETWEEN_SAMPLES_MS = 1000;
+  private static final String LABEL_FILENAME = "file:///android_asset/conv_actions_labels.txt";
+  private static final String MODEL_FILENAME = "file:///android_asset/conv_actions_frozen.pb";
+//  private static final String LABEL_FILENAME = "file:///android_asset/100_conv_labels.txt";
+//  private static final String MODEL_FILENAME = "file:///android_asset/100_conv_frozen_graph.pb";
   private static final String INPUT_DATA_NAME = "decoded_sample_data:0";
   private static final String SAMPLE_RATE_NAME = "decoded_sample_data:1";
   private static final String OUTPUT_SCORES_NAME = "labels_softmax";
@@ -96,6 +103,14 @@ public class SpeechActivity extends Activity {
   private List<String> labels = new ArrayList<String>();
   private List<String> displayedLabels = new ArrayList<>();
   private RecognizeCommands recognizeCommands = null;
+
+
+  // My working variables
+  private static final Double SINGLE_VOICE_DB_RANGE = 10.0;
+  private static final long DB_WINDOW_MS = 10000;
+  private Deque<Pair<Long, Double>> previousDbResults = new ArrayDeque<>();
+  private Double averageDb = 0.0;
+  private Double majorityDbRatio = 0.0;
 
   @Override
   protected void onCreate(Bundle savedInstanceState) {
@@ -303,9 +318,13 @@ public class SpeechActivity extends Activity {
 
       // We need to feed in float values between -1.0f and 1.0f, so divide the
       // signed 16-bit inputs.
+      double sum = 0, amplitude = 0;
       for (int i = 0; i < RECORDING_LENGTH; ++i) {
         floatInputBuffer[i] = inputBuffer[i] / 32767.0f;
+        sum += floatInputBuffer[i] * floatInputBuffer[i];
       }
+      amplitude = 100 + 20 * Math.log10(Math.sqrt(sum / RECORDING_LENGTH) / 2);
+      Log.d("DEBUG", "amplitude = " + String.format("%3.2f", amplitude));
 
       // Run the model.
       inferenceInterface.feed(SAMPLE_RATE_NAME, sampleRateList);
@@ -318,10 +337,29 @@ public class SpeechActivity extends Activity {
       final RecognizeCommands.RecognitionResult result =
           recognizeCommands.processLatestResults(outputScores, currentTime);
 
+      processLatestDbValues(currentTime, amplitude);
+      Log.d("DEBUG", "isHumanVoiceDetected = " + result.isHumanVoiceDetected);
+
       runOnUiThread(
           new Runnable() {
             @Override
             public void run() {
+
+              // Scenario 1: "Silence" = Average db value < 40
+              // Scenario 2: "Ambiance Noise" = Average db value > 40 & no human voice detected
+              // Scenario 3: "Single voice" = majority db value > 70%
+              // Step 4: recognize "Ambiance Noise" scenario
+              if(averageDb < 40){
+                Log.d("DEBUG", "Scenario 1: Silence");
+              } else if(majorityDbRatio > 0.7f) {
+                Log.d("DEBUG", "Scenario 2: Single Voice");
+              } else if(!result.isHumanVoiceDetected) {
+                Log.d("DEBUG", "Scenario 4: Ambiance Noise");
+              } else {
+                Log.d("DEBUG", "Scenario 3: Crowd Noise");
+              }
+
+
               // If we do have a new command, highlight the right list entry.
               if (!result.foundCommand.startsWith("_") && result.isNewCommand) {
                 int labelIndex = -1;
@@ -355,4 +393,34 @@ public class SpeechActivity extends Activity {
 
     Log.v(LOG_TAG, "End recognition");
   }
+
+  private void processLatestDbValues(long currentTime, double amplitude) {
+
+    if(amplitude < 0 || amplitude > 100) return;
+
+    Double dbSum = averageDb * previousDbResults.size();
+
+    // Add the latest results to the head of the queue.
+    previousDbResults.addLast(new Pair<>(currentTime, amplitude));
+    dbSum += amplitude;
+
+    // Prune any earlier results that are too old for the averaging window.
+    while (previousDbResults.getFirst().first < currentTime - DB_WINDOW_MS) {
+      Pair<Long, Double> p = previousDbResults.removeFirst();
+      dbSum -= p.second;
+    }
+
+    averageDb = dbSum / previousDbResults.size();
+    Log.d("DEBUG", "averageDb = " + String.format("%3.2f", averageDb));
+
+    majorityDbRatio = 0.0;
+    for(Pair<Long, Double> db : previousDbResults){
+      if(averageDb - SINGLE_VOICE_DB_RANGE < db.second && db.second < averageDb + SINGLE_VOICE_DB_RANGE) {
+        majorityDbRatio++;
+      }
+    }
+    majorityDbRatio = majorityDbRatio / previousDbResults.size();
+    Log.d("DEBUG", "majorityDbRatio = " + String.format("%2.2f", majorityDbRatio * 100));
+  }
+
 }

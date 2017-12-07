@@ -27,6 +27,9 @@ import java.util.List;
 
 /** Reads in results from an instantaneous audio recognition model and smoothes them over time. */
 public class RecognizeCommands {
+
+  private static final float DETECTION_LOWER_THRESHOLD = 0.3f;
+
   // Configuration settings.
   private List<String> labels = new ArrayList<String>();
   private long averageWindowDurationMs;
@@ -70,10 +73,14 @@ public class RecognizeCommands {
     public final float score;
     public final boolean isNewCommand;
 
-    public RecognitionResult(String inFoundCommand, float inScore, boolean inIsNewCommand) {
+    public final boolean isHumanVoiceDetected;
+
+    public RecognitionResult(String inFoundCommand, float inScore, boolean inIsNewCommand,
+                             boolean inIsHumanVoiceDetected) {
       foundCommand = inFoundCommand;
       score = inScore;
       isNewCommand = inIsNewCommand;
+      isHumanVoiceDetected = inIsHumanVoiceDetected;
     }
   }
 
@@ -115,12 +122,15 @@ public class RecognizeCommands {
               + previousResults.getFirst().first);
     }
 
+    Log.d("DEBUG", "currentResults = " + Arrays.toString(currentResults));
+
     final int howManyResults = previousResults.size();
     // Ignore any results that are coming in too frequently.
     if (howManyResults > 1) {
       final long timeSinceMostRecent = currentTimeMS - previousResults.getLast().first;
       if (timeSinceMostRecent < minimumTimeBetweenSamplesMs) {
-        return new RecognitionResult(previousTopLabel, previousTopLabelScore, false);
+        Log.d("DEBUG", "result too frequently");
+        return new RecognitionResult(previousTopLabel, previousTopLabelScore, false, false);
       }
     }
 
@@ -133,6 +143,7 @@ public class RecognizeCommands {
       previousResults.removeFirst();
     }
 
+
     // If there are too few results, assume the result will be unreliable and
     // bail.
     final long earliestTime = previousResults.getFirst().first;
@@ -140,7 +151,7 @@ public class RecognizeCommands {
     if ((howManyResults < minimumCount)
         || (samplesDuration < (averageWindowDurationMs / MINIMUM_TIME_FRACTION))) {
       Log.v("RecognizeResult", "Too few results");
-      return new RecognitionResult(previousTopLabel, 0.0f, false);
+      return new RecognitionResult(previousTopLabel, 0.0f, false, false);
     }
 
     // Calculate the average score across all the results in the window.
@@ -174,14 +185,22 @@ public class RecognizeCommands {
       timeSinceLastTop = currentTimeMS - previousTopLabelTime;
     }
     boolean isNewCommand;
+    boolean isHumanVoiceDetected;
     if ((currentTopScore > detectionThreshold) && (timeSinceLastTop > suppressionMs)) {
       previousTopLabel = currentTopLabel;
       previousTopLabelTime = currentTimeMS;
       previousTopLabelScore = currentTopScore;
       isNewCommand = true;
+      isHumanVoiceDetected = true;
+    } else if (currentTopScore > DETECTION_LOWER_THRESHOLD) {
+      isNewCommand = false;
+      isHumanVoiceDetected = true;
+      Log.d("DEBUG", "Someone is talking");
     } else {
       isNewCommand = false;
+      isHumanVoiceDetected = false;
+      Log.d("DEBUG", "Others");
     }
-    return new RecognitionResult(currentTopLabel, currentTopScore, isNewCommand);
+    return new RecognitionResult(currentTopLabel, currentTopScore, isNewCommand, isHumanVoiceDetected);
   }
 }
