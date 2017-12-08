@@ -215,11 +215,9 @@ public class RecognizeCommands {
                 isHumanVoiceDetected = false;
             }
             isNewCommand = false;
-            Log.d("DEBUG", "Someone is talking");
         } else {
             isNewCommand = false;
             isHumanVoiceDetected = false;
-            Log.d("DEBUG", "Others");
         }
         return new RecognitionResult(currentTopLabel, currentTopScore, isNewCommand, isHumanVoiceDetected);
     }

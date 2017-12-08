@@ -1,6 +1,7 @@
 package com.mindorks.tensorflowexample;
 
 import android.Manifest;
+import android.content.Context;
 import android.content.pm.PackageManager;
 import android.media.AudioFormat;
 import android.media.AudioRecord;
@@ -18,7 +19,9 @@ import android.view.View;
 import android.widget.Button;
 import android.widget.SeekBar;
 import android.widget.TextView;
+import android.widget.Toast;
 
+import org.tensorflow.Session;
 import org.tensorflow.contrib.android.TensorFlowInferenceInterface;
 
 import java.io.BufferedReader;
@@ -27,6 +30,7 @@ import java.io.InputStreamReader;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.Deque;
 import java.util.List;
 import java.util.Locale;
@@ -36,6 +40,8 @@ public class MainActivity extends AppCompatActivity {
 
     private static final String DBG_TAG = "MAIN";
 
+    private Context mContext = this;
+
     // Tensor Flow constant
     private static final int SAMPLE_RATE = 16000;
     private static final int SAMPLE_DURATION_MS = 1000;
@@ -44,12 +50,10 @@ public class MainActivity extends AppCompatActivity {
     private static final float DETECTION_THRESHOLD = 0.70f;
     private static final int SUPPRESSION_MS = 1500;
     private static final int MINIMUM_COUNT = 3;
-    private static final long MINIMUM_TIME_BETWEEN_SAMPLES_MS = 30;
-    //  private static final long MINIMUM_TIME_BETWEEN_SAMPLES_MS = 1000;
+//    private static final long MINIMUM_TIME_BETWEEN_SAMPLES_MS = 30;
+    private static final long MINIMUM_TIME_BETWEEN_SAMPLES_MS = 100;
     private static final String LABEL_FILENAME = "file:///android_asset/conv_actions_labels.txt";
     private static final String MODEL_FILENAME = "file:///android_asset/conv_actions_frozen.pb";
-    //  private static final String LABEL_FILENAME = "file:///android_asset/100_conv_labels.txt";
-//  private static final String MODEL_FILENAME = "file:///android_asset/100_conv_frozen_graph.pb";
     private static final String INPUT_DATA_NAME = "decoded_sample_data:0";
     private static final String SAMPLE_RATE_NAME = "decoded_sample_data:1";
     private static final String OUTPUT_SCORES_NAME = "labels_softmax";
@@ -59,7 +63,9 @@ public class MainActivity extends AppCompatActivity {
     private static final long DB_WINDOW_MS = 5000;
     private static final int NUM_SCENARIOS = 4;
     public static final int DB_THRESHOLD_SILENCE = 45;
-    public static final int DB_THRESHOLD_SINGLE_VOICE = 70;
+    public static final int DB_THRESHOLD_SINGLE_VOICE = 75;
+    private static final int FREQ_MAX_COUNTER = 6;
+    public static final int FFT_INPUT_LENGTH = 1024;
 
     // Layouts
     private Button playButton;
@@ -70,7 +76,7 @@ public class MainActivity extends AppCompatActivity {
     private TextView timerDisplay;
 
     // My additional working variables
-    private static final Double SINGLE_VOICE_DB_RANGE = 10.0;
+    private static final Double SINGLE_VOICE_DB_RANGE = 5.0;
     private static final Double SINGLE_VOICE_DB_RATIO = 0.7;
     private Deque<Pair<Long, Double>> previousDbResults = new ArrayDeque<>();
     private Double averageDb = 0.0;
@@ -79,6 +85,7 @@ public class MainActivity extends AppCompatActivity {
     private boolean isPlaying = false;
     private boolean isRunningTensorFlow = false;
     private int[] countScenarios;
+    private int[] countScenariosLastOneMinute;
     private int timerCount = 0;
     private Handler handlerTimer;
     private Runnable runnableTimer;
@@ -95,6 +102,14 @@ public class MainActivity extends AppCompatActivity {
     private TensorFlowInferenceInterface inferenceInterface;
     private List<String> labels = new ArrayList<String>();
     private RecognizeCommands recognizeCommands = null;
+    private int fftCounter = 0;
+    private int freqCounter = 0;
+    private int freqInRangeCounter = 0;
+    private int freqInRangeFlag = 2;
+    private int previousScenario = -1, currentScenario = -1;
+    private Handler setupVolumeHandler;
+    private Runnable setupVolumeRunnable;
+
 
 
     @Override
@@ -217,8 +232,47 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
+        // Update volume every 1 minute
+        setupVolumeHandler = new Handler();
+        setupVolumeRunnable = new Runnable() {
+            @Override
+            public void run() {
+                currentVolume = (float) controller.getProgress() / 100;
+                currentScenario = 0;
+                for(int i = 1; i < NUM_SCENARIOS; i++) {
+                    if(countScenariosLastOneMinute[i] > countScenariosLastOneMinute[currentScenario]){
+                        currentScenario = i;
+                    }
+                }
+                Log.d(DBG_TAG, "previousScenario = " + previousScenario + ", currentScenario = " + currentScenario);
+                // Scenario silence/single --> crowd/Ambience ==> Volume up
+                if((previousScenario == 0 || previousScenario == 1) &&
+                        (currentScenario == 2 || currentScenario == 3)){
+                    currentVolume = Math.min(currentVolume + 0.2f, 1);
+                    Toast.makeText(mContext, "Volume up!!", Toast.LENGTH_SHORT).show();
+                }
+                else if((previousScenario == 2 || previousScenario == 3) &&
+                        (currentScenario == 0 || currentScenario == 1)){
+                    currentVolume = Math.max(currentVolume - 0.2f, 0);
+                    Toast.makeText(mContext, "Volume down!!", Toast.LENGTH_SHORT).show();
+                }
+                previousScenario = currentScenario;
+
+                Log.d(DBG_TAG, "currentVolume = " + currentVolume);
+                volumeTextView.setText(String.format("%s / 100", Integer.toString((int) (currentVolume * 100))));
+                mediaPlayer.setVolume(currentVolume,currentVolume);
+                controller.setProgress((int) (currentVolume * 100));
+                for(int i = 0; i < countScenariosLastOneMinute.length; i++){
+                    countScenariosLastOneMinute[i] = 0;
+                }
+                setupVolumeHandler.postDelayed(setupVolumeRunnable, 10000);
+            }
+        };
+
+
         // Setup textview
         countScenarios = new int[NUM_SCENARIOS];
+        countScenariosLastOneMinute = new int[NUM_SCENARIOS];
         tvScenarios = new TextView[NUM_SCENARIOS];
         tvScenarios[0] = (TextView) findViewById(R.id.silence_count);
         tvScenarios[1] = (TextView) findViewById(R.id.single_voice_count);
@@ -385,6 +439,8 @@ public class MainActivity extends AppCompatActivity {
                             }
                         });
         recognitionThread.start();
+
+        setupVolumeHandler.post(setupVolumeRunnable);
     }
 
     public synchronized void stopRecognition() {
@@ -393,6 +449,13 @@ public class MainActivity extends AppCompatActivity {
         }
         shouldContinueRecognition = false;
         recognitionThread = null;
+
+        fftCounter = 0;
+        freqCounter = 0;
+        freqInRangeCounter = 0;
+        freqInRangeFlag = 2;
+
+        setupVolumeHandler.removeCallbacks(setupVolumeRunnable);
     }
 
 
@@ -421,6 +484,8 @@ public class MainActivity extends AppCompatActivity {
                 recordingBufferLock.unlock();
             }
 
+            long currentTime = System.currentTimeMillis();
+
             // We need to feed in float values between -1.0f and 1.0f, so divide the
             // signed 16-bit inputs.
             double sum = 0, amplitude = 0;
@@ -429,7 +494,12 @@ public class MainActivity extends AppCompatActivity {
                 sum += floatInputBuffer[i] * floatInputBuffer[i];
             }
             amplitude = 100 + 20 * Math.log10(Math.sqrt(sum / RECORDING_LENGTH) / 2);
-            Log.d(DBG_TAG, "amplitude = " + String.format("%3.2f", amplitude));
+//            Log.d(DBG_TAG, "amplitude = " + String.format("%3.2f", amplitude));
+
+            processLatestDbValues(currentTime, amplitude);
+
+            fftCalculateFrequency(floatInputBuffer);
+
 
             // Run the model.
             inferenceInterface.feed(SAMPLE_RATE_NAME, sampleRateList);
@@ -438,56 +508,16 @@ public class MainActivity extends AppCompatActivity {
             inferenceInterface.fetch(OUTPUT_SCORES_NAME, outputScores);
 
             // Use the smoother to figure out if we've had a real recognition event.
-            long currentTime = System.currentTimeMillis();
             final RecognizeCommands.RecognitionResult result =
                     recognizeCommands.processLatestResults(outputScores, currentTime);
-
-            processLatestDbValues(currentTime, amplitude);
-            Log.d(DBG_TAG, "isHumanVoiceDetected = " + result.isHumanVoiceDetected);
+//            Log.d(DBG_TAG, "isHumanVoiceDetected = " + result.isHumanVoiceDetected);
 
             runOnUiThread(
                     new Runnable() {
                         @Override
                         public void run() {
 
-                            Log.d(DBG_TAG, "result.foundCommand = " + result.foundCommand);
-
-                            // Scenario 1: "Silence" = Average db value < 40
-                            // Scenario 2: "Single voice" = majority db value > 70%
-                            // Scenario 4: "Ambiance Noise" = Average db value > 40 & no human voice detected
-                            // Scenario 3: "Crowd voice" = all other cases
-                            if (averageDb < DB_THRESHOLD_SILENCE) {
-
-                                Log.d(DBG_TAG, "Scenario 1: Silence");
-                                countScenarios[0]++;
-                                tvScenarios[0].setText(String.format(Locale.ENGLISH, "%d", countScenarios[0]));
-
-                            } else if (!result.isHumanVoiceDetected) {
-
-                                Log.d(DBG_TAG, "Scenario 4: Ambiance Noise");
-                                countScenarios[3]++;
-                                tvScenarios[3].setText(String.format(Locale.ENGLISH, "%d", countScenarios[3]));
-
-                            } else if (majorityDbRatio > SINGLE_VOICE_DB_RATIO &&
-                                    averageDb < DB_THRESHOLD_SINGLE_VOICE) {
-
-                                Log.d(DBG_TAG, "Scenario 2: Single Voice");
-                                countScenarios[1]++;
-                                tvScenarios[1].setText(String.format(Locale.ENGLISH, "%d", countScenarios[1]));
-
-                            } else {
-
-                                Log.d(DBG_TAG, "Scenario 3: Crowd Voice");
-                                countScenarios[2]++;
-                                tvScenarios[2].setText(String.format(Locale.ENGLISH, "%d", countScenarios[2]));
-
-                            }
-
-
-                            // If we do have a new command, highlight the right list entry.
-                            if (!result.foundCommand.startsWith("_") && result.isNewCommand) {
-                                Log.d(DBG_TAG, "result.foundCommand = " + result.foundCommand);
-                            }
+                            determineScenario(result);
                         }
                     });
             try {
@@ -499,6 +529,103 @@ public class MainActivity extends AppCompatActivity {
         }
 
         Log.v(DBG_TAG, "End recognition");
+    }
+
+    private void fftCalculateFrequency(float[] floatInputBuffer) {
+        // Do FFT
+        fftCounter++;
+        if (fftCounter > 25) {
+            fftCounter = 0;
+
+            Complex[] complexData = new Complex[FFT_INPUT_LENGTH];
+            for (int i = 0; i < FFT_INPUT_LENGTH; i++) {
+                complexData[i] = new Complex(floatInputBuffer[i], 0);
+            }
+            Complex[] fftResult = FFT.fft(complexData);
+            Log.d(DBG_TAG, "fftResult length = " + fftResult.length);
+            int maxFrequency = 0;
+            for (int i = 0; i < fftResult.length * 0.7; i++) {
+                if (fftResult[i].abs() > fftResult[maxFrequency].abs()) {
+                    maxFrequency = i;
+                }
+            }
+            maxFrequency *= ((float)SAMPLE_RATE / FFT_INPUT_LENGTH);
+            Log.d(DBG_TAG, "maxFrequency = " + maxFrequency + " HZ");
+
+            freqCounter++;
+            if (freqCounter == FREQ_MAX_COUNTER) {
+                if (freqInRangeCounter > 4)
+                    freqInRangeFlag = 2;
+                else if (freqInRangeCounter > 2)
+                    freqInRangeFlag = 1;
+                else
+                    freqInRangeFlag = 0;
+                freqCounter = 0;
+                freqInRangeCounter = 0;
+            }
+            if (80 <= maxFrequency && maxFrequency <= 640) {
+                freqInRangeCounter++;
+            }
+            Log.d(DBG_TAG, "freqInRangeCounter = " + freqInRangeCounter);
+            Log.d(DBG_TAG, "freqInRangeFlag = " + freqInRangeFlag);
+        }
+    }
+
+    private void determineScenario(RecognizeCommands.RecognitionResult result) {
+//        Log.d(DBG_TAG, "result.foundCommand = " + result.foundCommand);
+
+        // Scenario 1: "Silence" = Average db value < 40
+        // Scenario 2: "Single voice" = majority db value > 70%
+        // Scenario 4: "Ambiance Noise" = Average db value > 40 & no human voice detected
+        // Scenario 3: "Crowd voice" = all other cases
+        if (averageDb < DB_THRESHOLD_SILENCE) {
+
+            Log.d(DBG_TAG, "Scenario 1: Silence");
+            countScenarios[0]++;
+            countScenariosLastOneMinute[0]++;
+            tvScenarios[0].setText(String.format(Locale.ENGLISH, "%d", countScenarios[0]));
+
+        } else if (!result.isHumanVoiceDetected) {
+
+            Log.d(DBG_TAG, "Scenario 4: Ambiance Noise");
+            countScenarios[3]++;
+            countScenariosLastOneMinute[3]++;
+            tvScenarios[3].setText(String.format(Locale.ENGLISH, "%d", countScenarios[3]));
+
+        } else if (majorityDbRatio > SINGLE_VOICE_DB_RATIO &&
+                averageDb < DB_THRESHOLD_SINGLE_VOICE) {
+
+            if (freqInRangeFlag == 2) {
+                Log.d(DBG_TAG, "Scenario 2: Single Voice");
+                countScenarios[1]++;
+                countScenariosLastOneMinute[1]++;
+                tvScenarios[1].setText(String.format(Locale.ENGLISH, "%d", countScenarios[1]));
+            } else if (freqInRangeFlag == 1) {
+                Log.d(DBG_TAG, "Scenario 3: Crowd Voice");
+                countScenarios[2]++;
+                countScenariosLastOneMinute[2]++;
+                tvScenarios[2].setText(String.format(Locale.ENGLISH, "%d", countScenarios[2]));
+            } else {
+                Log.d(DBG_TAG, "Scenario 4: Ambiance Noise");
+                countScenarios[3]++;
+                countScenariosLastOneMinute[3]++;
+                tvScenarios[3].setText(String.format(Locale.ENGLISH, "%d", countScenarios[3]));
+            }
+
+        } else {
+
+            Log.d(DBG_TAG, "Scenario 3: Crowd Voice");
+            countScenarios[2]++;
+            countScenariosLastOneMinute[2]++;
+            tvScenarios[2].setText(String.format(Locale.ENGLISH, "%d", countScenarios[2]));
+
+        }
+
+
+        // If we do have a new command, highlight the right list entry.
+        if (!result.foundCommand.startsWith("_") && result.isNewCommand) {
+            Log.d(DBG_TAG, "result.foundCommand = " + result.foundCommand);
+        }
     }
 
     private void processLatestDbValues(long currentTime, double amplitude) {
@@ -527,6 +654,6 @@ public class MainActivity extends AppCompatActivity {
             }
         }
         majorityDbRatio = majorityDbRatio / previousDbResults.size();
-        Log.d(DBG_TAG, "majorityDbRatio = " + String.format("%2.2f", majorityDbRatio * 100));
+//        Log.d(DBG_TAG, "majorityDbRatio = " + String.format("%2.2f", majorityDbRatio * 100));
     }
 }
