@@ -2,6 +2,7 @@ package com.mindorks.tensorflowexample;
 
 import android.Manifest;
 import android.content.Context;
+import android.content.DialogInterface;
 import android.content.pm.PackageManager;
 import android.media.AudioFormat;
 import android.media.AudioRecord;
@@ -12,6 +13,7 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.support.annotation.NonNull;
 import android.support.v4.content.ContextCompat;
+import android.support.v7.app.AlertDialog;
 import android.support.v7.app.AppCompatActivity;
 import android.util.Log;
 import android.util.Pair;
@@ -21,7 +23,6 @@ import android.widget.SeekBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
-import org.tensorflow.Session;
 import org.tensorflow.contrib.android.TensorFlowInferenceInterface;
 
 import java.io.BufferedReader;
@@ -30,7 +31,6 @@ import java.io.InputStreamReader;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.Deque;
 import java.util.List;
 import java.util.Locale;
@@ -39,6 +39,7 @@ import java.util.concurrent.locks.ReentrantLock;
 public class MainActivity extends AppCompatActivity {
 
     private static final String DBG_TAG = "MAIN";
+    public static final int VOLUME_CHANGE_TIMER = 30000;
 
     private Context mContext = this;
 
@@ -50,8 +51,7 @@ public class MainActivity extends AppCompatActivity {
     private static final float DETECTION_THRESHOLD = 0.70f;
     private static final int SUPPRESSION_MS = 1500;
     private static final int MINIMUM_COUNT = 3;
-//    private static final long MINIMUM_TIME_BETWEEN_SAMPLES_MS = 30;
-    private static final long MINIMUM_TIME_BETWEEN_SAMPLES_MS = 100;
+    private static final long MINIMUM_TIME_BETWEEN_SAMPLES_MS = 30;
     private static final String LABEL_FILENAME = "file:///android_asset/conv_actions_labels.txt";
     private static final String MODEL_FILENAME = "file:///android_asset/conv_actions_frozen.pb";
     private static final String INPUT_DATA_NAME = "decoded_sample_data:0";
@@ -208,6 +208,13 @@ public class MainActivity extends AppCompatActivity {
         // Media player
         mediaPlayer = MediaPlayer.create(this, R.raw.song);
         mediaPlayer.setVolume(currentVolume, currentVolume);
+        mediaPlayer.setOnCompletionListener(new MediaPlayer.OnCompletionListener() {
+            @Override
+            public void onCompletion(MediaPlayer mp) {
+                mediaPlayer.start();
+            }
+
+        });
 
         // Volume controller
         controller = (SeekBar) findViewById(R.id.controller_volume);
@@ -221,6 +228,7 @@ public class MainActivity extends AppCompatActivity {
                 currentVolume = (float) controller.getProgress() / 100;
                 volumeTextView.setText(controller.getProgress() + " / 100");
                 mediaPlayer.setVolume(currentVolume, currentVolume);
+                previousScenario = currentScenario = 0;
             }
 
             @Override
@@ -246,26 +254,93 @@ public class MainActivity extends AppCompatActivity {
                 }
                 Log.d(DBG_TAG, "previousScenario = " + previousScenario + ", currentScenario = " + currentScenario);
                 // Scenario silence/single --> crowd/Ambience ==> Volume up
-                if((previousScenario == 0 || previousScenario == 1) &&
+                if(currentVolume < 1 && (previousScenario == 0 || previousScenario == 1) &&
                         (currentScenario == 2 || currentScenario == 3)){
-                    currentVolume = Math.min(currentVolume + 0.2f, 1);
+//                    currentVolume = Math.min(currentVolume + 0.2f, 1);
+                    AlertDialog changeVolumeDialog = new AlertDialog.Builder(mContext)
+                            .setCancelable(false)
+                            .setTitle("Volume up")
+                            .setMessage("We detected you entered a noise environment. Do you want to volume up?")
+                            .setPositiveButton("Ok", new DialogInterface.OnClickListener() {
+                                @Override
+                                public void onClick(DialogInterface dialog, int which) {
+                                    currentVolume = Math.max(currentVolume + 0.2f, 0);
+                                    volumeTextView.setText(String.format("%s / 100", Integer.toString((int) (currentVolume * 100))));
+                                    mediaPlayer.setVolume(currentVolume,currentVolume);
+                                    controller.setProgress((int) (currentVolume * 100));
+                                    for(int i = 0; i < countScenariosLastOneMinute.length; i++){
+                                        countScenariosLastOneMinute[i] = 0;
+                                    }
+                                    setupVolumeHandler.postDelayed(setupVolumeRunnable, VOLUME_CHANGE_TIMER);
+                                    previousScenario = currentScenario = 0;
+                                }
+                            })
+                            .setNeutralButton("Skip", new DialogInterface.OnClickListener() {
+                                @Override
+                                public void onClick(DialogInterface dialog, int which) {
+                                    setupVolumeHandler.postDelayed(setupVolumeRunnable, VOLUME_CHANGE_TIMER);
+                                    previousScenario = currentScenario = 0;
+                                }
+                            })
+                            .setNegativeButton("Never", new DialogInterface.OnClickListener() {
+                                @Override
+                                public void onClick(DialogInterface dialog, int which) {
+                                }
+                            })
+                            .create();
+                    changeVolumeDialog.show();
                     Toast.makeText(mContext, "Volume up!!", Toast.LENGTH_SHORT).show();
                 }
-                else if((previousScenario == 2 || previousScenario == 3) &&
+                else if(currentVolume > 0 && (previousScenario == 2 || previousScenario == 3) &&
                         (currentScenario == 0 || currentScenario == 1)){
-                    currentVolume = Math.max(currentVolume - 0.2f, 0);
+//                    currentVolume = Math.max(currentVolume - 0.2f, 0);
+                    AlertDialog changeVolumeDialog = new AlertDialog.Builder(mContext)
+                            .setCancelable(false)
+                            .setTitle("Volume Down")
+                            .setMessage("We detected you entered a quite environment. Do you want to volume down?")
+                            .setPositiveButton("Ok", new DialogInterface.OnClickListener() {
+                                @Override
+                                public void onClick(DialogInterface dialog, int which) {
+                                    currentVolume = Math.max(currentVolume - 0.2f, 0);
+                                    volumeTextView.setText(String.format("%s / 100", Integer.toString((int) (currentVolume * 100))));
+                                    mediaPlayer.setVolume(currentVolume,currentVolume);
+                                    controller.setProgress((int) (currentVolume * 100));
+                                    for(int i = 0; i < countScenariosLastOneMinute.length; i++){
+                                        countScenariosLastOneMinute[i] = 0;
+                                    }
+                                    setupVolumeHandler.postDelayed(setupVolumeRunnable, VOLUME_CHANGE_TIMER);
+                                    previousScenario = currentScenario = 0;
+                                }
+                            })
+                            .setNeutralButton("Skip", new DialogInterface.OnClickListener() {
+                                @Override
+                                public void onClick(DialogInterface dialog, int which) {
+                                    setupVolumeHandler.postDelayed(setupVolumeRunnable, VOLUME_CHANGE_TIMER);
+                                    previousScenario = currentScenario = 0;
+                                }
+                            })
+                            .setNegativeButton("Never", new DialogInterface.OnClickListener() {
+                                @Override
+                                public void onClick(DialogInterface dialog, int which) {
+                                }
+                            })
+                            .create();
+                    changeVolumeDialog.show();
                     Toast.makeText(mContext, "Volume down!!", Toast.LENGTH_SHORT).show();
+                }
+                else{
+                    setupVolumeHandler.postDelayed(setupVolumeRunnable, VOLUME_CHANGE_TIMER);
                 }
                 previousScenario = currentScenario;
 
                 Log.d(DBG_TAG, "currentVolume = " + currentVolume);
-                volumeTextView.setText(String.format("%s / 100", Integer.toString((int) (currentVolume * 100))));
-                mediaPlayer.setVolume(currentVolume,currentVolume);
-                controller.setProgress((int) (currentVolume * 100));
-                for(int i = 0; i < countScenariosLastOneMinute.length; i++){
-                    countScenariosLastOneMinute[i] = 0;
-                }
-                setupVolumeHandler.postDelayed(setupVolumeRunnable, 10000);
+//                volumeTextView.setText(String.format("%s / 100", Integer.toString((int) (currentVolume * 100))));
+//                mediaPlayer.setVolume(currentVolume,currentVolume);
+//                controller.setProgress((int) (currentVolume * 100));
+//                for(int i = 0; i < countScenariosLastOneMinute.length; i++){
+//                    countScenariosLastOneMinute[i] = 0;
+//                }
+//                setupVolumeHandler.postDelayed(setupVolumeRunnable, VOLUME_CHANGE_TIMER);
             }
         };
 
@@ -441,6 +516,7 @@ public class MainActivity extends AppCompatActivity {
         recognitionThread.start();
 
         setupVolumeHandler.post(setupVolumeRunnable);
+        previousScenario = currentScenario = 0;
     }
 
     public synchronized void stopRecognition() {
@@ -456,6 +532,7 @@ public class MainActivity extends AppCompatActivity {
         freqInRangeFlag = 2;
 
         setupVolumeHandler.removeCallbacks(setupVolumeRunnable);
+        previousScenario = currentScenario = 0;
     }
 
 
@@ -474,6 +551,7 @@ public class MainActivity extends AppCompatActivity {
             // make sure there's no writing happening and then copy it to our own
             // local version.
             recordingBufferLock.lock();
+
             try {
                 int maxLength = recordingBuffer.length;
                 int firstCopyLength = maxLength - recordingOffset;
@@ -493,8 +571,9 @@ public class MainActivity extends AppCompatActivity {
                 floatInputBuffer[i] = inputBuffer[i] / 32767.0f;
                 sum += floatInputBuffer[i] * floatInputBuffer[i];
             }
+
+            // Get DB value from PCM encoding
             amplitude = 100 + 20 * Math.log10(Math.sqrt(sum / RECORDING_LENGTH) / 2);
-//            Log.d(DBG_TAG, "amplitude = " + String.format("%3.2f", amplitude));
 
             processLatestDbValues(currentTime, amplitude);
 
@@ -520,9 +599,11 @@ public class MainActivity extends AppCompatActivity {
                             determineScenario(result);
                         }
                     });
+
             try {
                 // We don't need to run too frequently, so snooze for a bit.
                 Thread.sleep(MINIMUM_TIME_BETWEEN_SAMPLES_MS);
+
             } catch (InterruptedException e) {
                 // Ignore
             }
@@ -544,7 +625,7 @@ public class MainActivity extends AppCompatActivity {
             Complex[] fftResult = FFT.fft(complexData);
             Log.d(DBG_TAG, "fftResult length = " + fftResult.length);
             int maxFrequency = 0;
-            for (int i = 0; i < fftResult.length * 0.7; i++) {
+            for (int i = 0; i < fftResult.length; i++) {
                 if (fftResult[i].abs() > fftResult[maxFrequency].abs()) {
                     maxFrequency = i;
                 }
@@ -556,7 +637,7 @@ public class MainActivity extends AppCompatActivity {
             if (freqCounter == FREQ_MAX_COUNTER) {
                 if (freqInRangeCounter > 4)
                     freqInRangeFlag = 2;
-                else if (freqInRangeCounter > 2)
+                else if (freqInRangeCounter >= 2)
                     freqInRangeFlag = 1;
                 else
                     freqInRangeFlag = 0;
